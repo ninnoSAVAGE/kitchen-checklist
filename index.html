@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kitchen Checklist</title>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #000;
+      color: #fff;
+    }
+    .login, .app {
+      max-width: 480px;
+      margin: auto;
+      padding: 20px;
+    }
+    h1, h2 {
+      text-align: center;
+    }
+    .section {
+      margin-bottom: 20px;
+      border-top: 1px solid #444;
+      padding-top: 10px;
+    }
+    .task {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #222;
+      cursor: pointer;
+    }
+    .task.readonly {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .task.checked span {
+      text-decoration: line-through;
+      opacity: 0.6;
+    }
+    .by {
+      font-size: 12px;
+      opacity: 0.7;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #fff;
+      color: #000;
+      border: none;
+      font-size: 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="login" id="login">
+  <h1>Kitchen Checklist</h1>
+  <input id="email" placeholder="Email" style="width:100%;padding:10px;margin-bottom:10px" />
+  <input id="password" type="password" placeholder="Password" style="width:100%;padding:10px" />
+  <button onclick="login()">Login</button>
+</div>
+
+<div class="app" id="app" style="display:none">
+  <h1>Today Tasks</h1>
+  <div id="sections"></div>
+  <button onclick="logout()">Logout</button>
+</div>
+
+<script>
+  // 🔹 FIREBASE CONFIG (REPLACE WITH YOUR OWN – FREE)
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+    projectId: "YOUR_PROJECT",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "XXXX",
+    appId: "XXXX"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+
+  const auth = firebase.auth();
+  const db = firebase.database();
+
+  // 🔹 USER ROLES AND SECTION ACCESS
+  // email : section (admin sees all)
+  const userRoles = {
+    "michel.lignini@icloud.com": "admin",
+    "section1@kitchen.com": "Section 1",
+    "section2@kitchen.com": "Section 2",
+    "section3@kitchen.com": "Section 3",
+    "section4@kitchen.com": "Section 4",
+    "pastry@kitchen.com": "Pastry"
+  };
+
+  const sections = {
+    "Section 1": ["Prep item 1", "Prep item 2"],
+    "Section 2": ["Prep item 1"],
+    "Section 3": ["Prep item 1"],
+    "Section 4": ["Prep item 1"],
+    "Pastry": ["Dessert prep"]
+  };
+
+  const loginDiv = document.getElementById('login');
+  const appDiv = document.getElementById('app');
+  const sectionsDiv = document.getElementById('sections');
+
+  let currentUserRole = null;
+
+  function login() {
+    const emailValue = document.getElementById('email').value;
+    const passwordValue = document.getElementById('password').value;
+
+    auth.signInWithEmailAndPassword(emailValue, passwordValue)
+      .then(() => {
+        currentUserRole = userRoles[emailValue];
+        if (!currentUserRole) {
+          alert('User not authorized');
+          logout();
+          return;
+        }
+        loginDiv.style.display = 'none';
+        appDiv.style.display = 'block';
+        loadTasks();
+      })
+      .catch(err => alert(err.message));
+  }
+
+  function logout() {
+    auth.signOut();
+    location.reload();
+  }
+
+  function loadTasks() {
+    sectionsDiv.innerHTML = '';
+
+    for (const section in sections) {
+      if (currentUserRole !== 'admin' && currentUserRole !== section) continue;
+
+      const secDiv = document.createElement('div');
+      secDiv.className = 'section';
+      secDiv.innerHTML = `<h2>${section}</h2>`;
+
+      sections[section].forEach(task => {
+        const taskRef = db.ref(`tasks/${section}/${task}`);
+
+        const taskDiv = document.createElement('div');
+        taskDiv.className = 'task';
+
+        const label = document.createElement('span');
+        label.textContent = task;
+
+        const by = document.createElement('span');
+        by.className = 'by';
+
+        taskDiv.appendChild(label);
+        taskDiv.appendChild(by);
+
+        taskRef.on('value', snap => {
+          const data = snap.val();
+          if (data) {
+            taskDiv.classList.toggle('checked', data.done);
+            by.textContent = data.done ? `✔ ${data.by}` : '';
+          } else {
+            taskDiv.classList.remove('checked');
+            by.textContent = '';
+          }
+        });
+
+        if (currentUserRole === 'admin' || currentUserRole === section) {
+          taskDiv.onclick = () => {
+            const user = auth.currentUser.email;
+            const isDone = taskDiv.classList.contains('checked');
+            taskRef.set({ done: !isDone, by: user });
+          };
+        } else {
+          taskDiv.classList.add('readonly');
+        }
+
+        secDiv.appendChild(taskDiv);
+      });
+
+      sectionsDiv.appendChild(secDiv);
+    }
+  }
+</script>
+
+</body>
+</html>
